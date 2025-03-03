@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
 
- frontend:
+  frontend:
     container_name: react-app
     build: ./ComputexFrontend
     ports:
@@ -23,3 +23,6 @@ services:
       - POSTGRES_DB=recipe
     volumes:
       - ddata:/var/lib/postgresql/data
+
+volumes:
+  ddata:
