@@ -158,7 +158,7 @@ const ComputerBuilderPage: React.FC = () => {
     try {
       const token = localStorage.getItem("token");
       await axios.post(
-        "http://127.0.0.1:8000/cart/",
+        `${import.meta.env.VITE_API_URL}/cart/`,
         {
           product_name: product.name,
           product_price: product.price,

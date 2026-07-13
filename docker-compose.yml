@@ -4,8 +4,13 @@ services:
   backend:
     container_name: django-app
     build: ./Computex
+    env_file:
+      - .env
     ports:
       - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
 
   frontend:
     container_name: react-app
@@ -16,13 +21,16 @@ services:
       - backend
 
   database:
-    image: postgres
-    environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=12345
-      - POSTGRES_DB=recipe
+    image: postgres:16
+    env_file:
+      - .env
     volumes:
       - ddata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   ddata:
