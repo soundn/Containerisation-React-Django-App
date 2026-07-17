@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH and deploy
+      - name: SSH and deploy with health check
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -16,6 +16,30 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd Containerisation-React-Django-App
+
+            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+
+            echo "Pulling latest code..."
             git pull origin main
-            docker compose down
+
+            echo "Rebuilding containers..."
             docker compose up -d --build
+
+            echo "Waiting for containers to settle..."
+            sleep 15
+
+            echo "Running health check..."
+            if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
+              echo "Health check passed. Deploy successful."
+            else
+              echo "Health check FAILED. Rolling back to previous commit..."
+              git reset --hard $PREVIOUS_COMMIT
+              docker compose up -d --build
+              sleep 15
+              if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
+                echo "Rollback successful. Site restored to previous version."
+              else
+                echo "CRITICAL: Rollback also failed. Manual intervention required."
+                exit 1
+              fi
+            fi
