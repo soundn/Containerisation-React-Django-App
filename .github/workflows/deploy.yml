@@ -17,7 +17,11 @@ jobs:
           script: |
             cd Containerisation-React-Django-App
 
-            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            LAST_GOOD_FILE=~/.last_good_commit
+            if [ ! -f "$LAST_GOOD_FILE" ]; then
+              git rev-parse HEAD > "$LAST_GOOD_FILE"
+            fi
+            PREVIOUS_COMMIT=$(cat "$LAST_GOOD_FILE")
 
             echo "Pulling latest code..."
             git pull origin main
@@ -31,9 +35,10 @@ jobs:
             echo "Running health check..."
             if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
               echo "Health check passed. Deploy successful."
+              git rev-parse HEAD > "$LAST_GOOD_FILE"
             else
-              echo "Health check FAILED. Rolling back to previous commit..."
-              git reset --hard $PREVIOUS_COMMIT
+              echo "Health check FAILED. Rolling back to last known-good commit..."
+              git reset --hard "$PREVIOUS_COMMIT"
               docker compose up -d --build
               sleep 15
               if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
