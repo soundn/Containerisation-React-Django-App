@@ -3,7 +3,7 @@ version: '3.9'
 services:
   backend:
     container_name: django-app
-    build: ./Computex
+    build: jessymi/Computex-backend:latest
     env_file:
       - .env
     ports:
@@ -14,7 +14,7 @@ services:
 
   frontend:
     container_name: react-app
-    build: ./ComputexFrontend
+    build: jessymi/Computex-Frontend:latest
     env_file:
     - .env
     ports:

@@ -1,11 +1,44 @@
-name: Deploy to EC2
+name: Build, Push, and Deploy
 
 on:
   push:
     branches: [main]
 
 jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Computex
+          file: ./Computex/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/computex-backend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/computex-backend:${{ github.sha }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ComputexFrontend
+          file: ./ComputexFrontend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/computex-frontend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/computex-frontend:${{ github.sha }}
+
   deploy:
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: SSH and deploy with health check
@@ -17,13 +50,17 @@ jobs:
           script: |
             cd Containerisation-React-Django-App
 
-            PREVIOUS_COMMIT=$(git rev-parse HEAD)
+            LAST_GOOD_TAG_FILE=~/.last_good_tag
+            if [ ! -f "$LAST_GOOD_TAG_FILE" ]; then
+              echo "latest" > "$LAST_GOOD_TAG_FILE"
+            fi
+            PREVIOUS_TAG=$(cat "$LAST_GOOD_TAG_FILE")
 
-            echo "Pulling latest code..."
-            git pull origin main
+            echo "Pulling latest images..."
+            docker compose pull
 
-            echo "Rebuilding containers..."
-            docker compose up -d --build
+            echo "Starting containers..."
+            docker compose up -d
 
             echo "Waiting for containers to settle..."
             sleep 15
@@ -31,10 +68,11 @@ jobs:
             echo "Running health check..."
             if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
               echo "Health check passed. Deploy successful."
+              echo "${{ github.sha }}" > "$LAST_GOOD_TAG_FILE"
             else
-              echo "Health check FAILED. Rolling back to previous commit..."
-              git reset --hard $PREVIOUS_COMMIT
-              docker compose up -d --build
+              echo "Health check FAILED. Rolling back to previous image tag..."
+              sed -i "s/:latest/:$PREVIOUS_TAG/" docker-compose.yml
+              docker compose up -d
               sleep 15
               if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
                 echo "Rollback successful. Site restored to previous version."
