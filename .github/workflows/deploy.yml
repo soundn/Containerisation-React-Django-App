@@ -1,4 +1,4 @@
-name: Build, Push, and Deploy
+name: Build, Push, and Deploy to Kubernetes
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: SSH and deploy with health check
+      - name: SSH and deploy to k3s
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -49,35 +49,23 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd Containerisation-React-Django-App
-
-            LAST_GOOD_TAG_FILE=~/.last_good_tag
-            if [ ! -f "$LAST_GOOD_TAG_FILE" ]; then
-              echo "latest" > "$LAST_GOOD_TAG_FILE"
-            fi
-            PREVIOUS_TAG=$(cat "$LAST_GOOD_TAG_FILE")
-
-            echo "Pulling latest images..."
-            docker compose pull
-
-            echo "Starting containers..."
-            docker compose up -d
-
-            echo "Waiting for containers to settle..."
+            git pull origin main
+            cd k8s
+            sudo kubectl apply -f postgres-pvc.yaml
+            sudo kubectl apply -f postgres-deployment.yaml
+            sudo kubectl apply -f postgres-service.yaml
+            sudo kubectl apply -f backend-deployment.yaml
+            sudo kubectl apply -f backend-service.yaml
+            sudo kubectl apply -f frontend-deployment.yaml
+            sudo kubectl apply -f frontend-service.yaml
+            sudo kubectl apply -f strip-prefix-middleware.yaml
+            sudo kubectl apply -f ingress.yaml
+            sudo kubectl rollout restart deployment backend
+            sudo kubectl rollout restart deployment frontend
             sleep 15
-
-            echo "Running health check..."
             if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
-              echo "Health check passed. Deploy successful."
-              echo "${{ github.sha }}" > "$LAST_GOOD_TAG_FILE"
+              echo "Deploy successful."
             else
-              echo "Health check FAILED. Rolling back to previous image tag..."
-              sed -i "s/:latest/:$PREVIOUS_TAG/" docker-compose.yml
-              docker compose up -d
-              sleep 15
-              if curl -f -s -o /dev/null https://computex.jecintatechworks.com; then
-                echo "Rollback successful. Site restored to previous version."
-              else
-                echo "CRITICAL: Rollback also failed. Manual intervention required."
-                exit 1
-              fi
-            fi
+              echo "Health check FAILED. Rolling back..."
+              sudo kubectl rollout undo deployment backend
+              sudo kubectl rollout
